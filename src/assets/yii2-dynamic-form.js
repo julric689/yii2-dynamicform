@@ -355,7 +355,13 @@
                 $(this).parent().datepicker(eval($(this).attr('data-krajee-datepicker')));
             });
         }
-
+        // "kartik-v/yii2-widget-switchinput"
+         var $hasSwitchinput = $(widgetOptionsRoot.widgetItem).find('[data-krajee-bootstrapswitch]');
+         if ($hasSwitchinput.length > 0) {
+             $hasSwitchinput.each(function() {
+                 $(this).bootstrapSwitch(eval($(this).attr('data-krajee-bootstrapswitch')));
+             });
+         }
         // "kartik-v/yii2-widget-timepicker"
         var $hasTimepicker = $(widgetOptionsRoot.widgetItem).find('[data-krajee-timepicker]');
         if ($hasTimepicker.length > 0) {
