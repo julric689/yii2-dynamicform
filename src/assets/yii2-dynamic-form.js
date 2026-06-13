@@ -4,6 +4,7 @@
  * A jQuery plugin to clone form elements in a nested manner, maintaining accessibility.
  *
  * @author Wanderson Bragança <wanderson.wbc@gmail.com>
+ * @contributor Vivek Marakana <vivek.marakana@gmail.com>
  */
 (function ($) {
     var pluginName = 'yiiDynamicForm';
@@ -39,11 +40,11 @@
         },
 
         addItem: function (widgetOptions, e, $elem) {
-           _addItem(widgetOptions, e, $elem);
+            _addItem(widgetOptions, e, $elem);
         },
 
         deleteItem: function (widgetOptions, e, $elem) {
-           _deleteItem(widgetOptions, e, $elem);
+            _deleteItem(widgetOptions, e, $elem);
         },
 
         updateContainer: function () {
@@ -81,14 +82,16 @@
             } else if($(this).is('select')) {
                 $(this).find('option:selected').removeAttr("selected");
             } else {
-                $(this).val(''); 
+                $(this).val('');
             }
         });
 
         // remove "error/success" css class
         var yiiActiveFormData = $('#' + widgetOptions.formId).yiiActiveForm('data');
-        $template.find('.' + yiiActiveFormData.settings.errorCssClass).removeClass(yiiActiveFormData.settings.errorCssClass);
-        $template.find('.' + yiiActiveFormData.settings.successCssClass).removeClass(yiiActiveFormData.settings.successCssClass);
+        if(yiiActiveFormData && yiiActiveFormData.settings){
+            $template.find('.' + yiiActiveFormData.settings.errorCssClass).removeClass(yiiActiveFormData.settings.errorCssClass);
+            $template.find('.' + yiiActiveFormData.settings.successCssClass).removeClass(yiiActiveFormData.settings.successCssClass);
+        }
 
         return $template;
     };
@@ -115,8 +118,11 @@
         var count = _count($elem, widgetOptions);
 
         if (count < widgetOptions.limit) {
-            $toclone = $(widgetOptions.template);
+            $toclone = widgetOptions.template;
             $newclone = $toclone.clone(false, false);
+
+            // Distinct dynamic form items recursively
+            __distinctRecursive('[data-dynamicform^=dynamicform]', $newclone);
 
             if (widgetOptions.insertPosition === 'top') {
                 $elem.closest('.' + widgetOptions.widgetContainer).find(widgetOptions.widgetBody).prepend($newclone);
@@ -132,6 +138,19 @@
             // trigger a custom event for hooking
             $elem.closest('.' + widgetOptions.widgetContainer).triggerHandler(events.limitReached, widgetOptions.limit);
         }
+    };
+
+    // Distinct dynamic form recursively
+    var __distinctRecursive = function (regex, $item) {
+        var $items = $item.find(regex);
+
+        $.each($items, function (i, item) {
+            var formObject = eval($(item).data('dynamicform'));
+            var widgetItem = formObject.widgetItem;
+            $(item).find(widgetItem + ':not(:nth-child(1))').remove();
+
+            __distinctRecursive(regex, $(item));
+        });
     };
 
     var _removeValidations = function($elem, widgetOptions, count) {
@@ -199,7 +218,7 @@
                 matches[2] = matches[2].substring(1, matches[2].length - 1);
                 var identifiers = matches[2].split('-');
                 identifiers[0] = index;
-                
+
                 if (identifiers.length > 1) {
                     var widgetsOptions = [];
                     $elem.parents('div[data-dynamicform]').each(function(i){
@@ -208,7 +227,10 @@
 
                     widgetsOptions = widgetsOptions.reverse();
                     for (var i = identifiers.length - 1; i >= 1; i--) {
-                        identifiers[i] = $elem.closest(widgetsOptions[i].widgetItem).index();
+						if (typeof widgetsOptions[i] !== "undefined") {
+							identifiers[i] = $elem.closest(widgetsOptions[i].widgetItem).index();
+						}
+                        //$(".kv-plugin-loading").addClass("hide");
                     }
                 }
 
@@ -225,7 +247,7 @@
                 $(this).removeClass('field-' + id).addClass('field-' + newID);
             });
             // update "for" attribute
-            $elem.closest(widgetOptions.widgetItem).find("label[for='" + id + "']").attr('for',newID); 
+            $elem.closest(widgetOptions.widgetItem).find("label[for='" + id + "']").attr('for',newID);
         }
 
         return newID;
@@ -348,20 +370,14 @@
         }
 
         // "kartik-v/yii2-widget-datepicker"
-        var $hasDatepicker = $(widgetOptionsRoot.widgetItem).find('[data-krajee-datepicker]');
+        var $hasDatepicker = $(widgetOptionsRoot.widgetItem).find('[data-krajee-kvdatepicker]');
         if ($hasDatepicker.length > 0) {
             $hasDatepicker.each(function() {
-                $(this).parent().removeData().datepicker('remove');
-                $(this).parent().datepicker(eval($(this).attr('data-krajee-datepicker')));
+                $(this).parent().removeData().kvDatepicker('destroy');
+                $(this).parent().kvDatepicker(eval($(this).attr('data-krajee-kvdatepicker')));
             });
         }
-        // "kartik-v/yii2-widget-switchinput"
-         var $hasSwitchinput = $(widgetOptionsRoot.widgetItem).find('[data-krajee-bootstrapswitch]');
-         if ($hasSwitchinput.length > 0) {
-             $hasSwitchinput.each(function() {
-                 $(this).bootstrapSwitch(eval($(this).attr('data-krajee-bootstrapswitch')));
-             });
-         }
+
         // "kartik-v/yii2-widget-timepicker"
         var $hasTimepicker = $(widgetOptionsRoot.widgetItem).find('[data-krajee-timepicker]');
         if ($hasTimepicker.length > 0) {
@@ -407,26 +423,62 @@
                 $(this).TouchSpin(eval($(this).attr('data-krajee-TouchSpin')));
             });
         }
+		
+		// "kartik-v/yii2-widget-typehead"
+        var $hasTypehead = $(widgetOptionsRoot.widgetItem).find('[data-krajee-typeahead]');
+        if ($hasTypehead.length > 0) {
+            $hasTypehead.each(function() {
+				
+				$(this).typeahead('destroy');
+				var isTemplate = $(this).attr('data-template');
+				var emptyText = $(this).attr('data-empty');
+				
+				var source = new Bloodhound({
+				  datumTokenizer: Bloodhound.tokenizers.obj.whitespace($(this).attr('data-display')),
+				  queryTokenizer: Bloodhound.tokenizers.whitespace,
+				  remote: {
+					url: $(this).attr('data-url'),
+					wildcard: '%QUERY'
+				  }
+				});					
+				
+				if (typeof isTemplate != 'undefined') {
+					$(this).typeahead(null, {
+					  name: $(this).attr('id'),
+					  display: $(this).attr('data-display'),
+					  source: source,
+					  templates: {
+						empty: [
+						 emptyText
+						],
+						suggestion: Handlebars.compile(isTemplate)
+					  },				  				  
+					});					
+				} else {
+					$(this).typeahead(null, {
+					  name: $(this).attr('id'),
+					  display: $(this).attr('data-display'),
+					  source: source
+					});					
+				}	
+            });
+        }
 
         // "kartik-v/yii2-widget-colorinput"
-        var $hasSpectrum = $(widgetOptionsRoot.widgetItem).find('[data-krajee-spectrum]');
+        var $hasSpectrum = $(widgetOptionsRoot.widgetItem).find('.spectrum-source');
         if ($hasSpectrum.length > 0) {
             $hasSpectrum.each(function() {
+				var kvPalette=[["rgb(0, 0, 0)","rgb(67, 67, 67)","rgb(102, 102, 102)","rgb(204, 204, 204)","rgb(217, 217, 217)","rgb(255, 255, 255)"],["rgb(152, 0, 0)","rgb(255, 0, 0)","rgb(255, 153, 0)","rgb(255, 255, 0)","rgb(0, 255, 0)","rgb(0, 255, 255)","rgb(74, 134, 232)","rgb(0, 0, 255)","rgb(153, 0, 255)","rgb(255, 0, 255)"],["rgb(230, 184, 175)","rgb(244, 204, 204)","rgb(252, 229, 205)","rgb(255, 242, 204)","rgb(217, 234, 211)","rgb(208, 224, 227)","rgb(201, 218, 248)","rgb(207, 226, 243)","rgb(217, 210, 233)","rgb(234, 209, 220)"],["rgb(221, 126, 107)","rgb(234, 153, 153)","rgb(249, 203, 156)","rgb(255, 229, 153)","rgb(182, 215, 168)","rgb(162, 196, 201)","rgb(164, 194, 244)","rgb(159, 197, 232)","rgb(180, 167, 214)","rgb(213, 166, 189)"],["rgb(204, 65, 37)","rgb(224, 102, 102)","rgb(246, 178, 107)","rgb(255, 217, 102)","rgb(147, 196, 125)","rgb(118, 165, 175)","rgb(109, 158, 235)","rgb(111, 168, 220)","rgb(142, 124, 195)","rgb(194, 123, 160)"],["rgb(166, 28, 0)","rgb(204, 0, 0)","rgb(230, 145, 56)","rgb(241, 194, 50)","rgb(106, 168, 79)","rgb(69, 129, 142)","rgb(60, 120, 216)","rgb(61, 133, 198)","rgb(103, 78, 167)","rgb(166, 77, 121)"],["rgb(91, 15, 0)","rgb(102, 0, 0)","rgb(120, 63, 4)","rgb(127, 96, 0)","rgb(39, 78, 19)","rgb(12, 52, 61)","rgb(28, 69, 135)","rgb(7, 55, 99)","rgb(32, 18, 77)","rgb(76, 17, 48)"]];
+				var spectrum = {"showInput":true,"showInitial":true,"showPalette":true,"showSelectionPalette":true,"showAlpha":true,"allowEmpty":true,"preferredFormat":"hex","theme":"sp-krajee","cancelText":"cancel","chooseText":"choose","clearText":"Clear Color Selection","noColorSelectedText":"No Color Selected","togglePaletteMoreText":"more","togglePaletteLessText":"less","palette":kvPalette};
                 var id = '#' + $(this).attr('id');
-                var sourceID  = id + '-source';
-                $(sourceID).spectrum('destroy');
-                $(sourceID).unbind();
-                $(id).unbind();
-                var configSpectrum = eval($(this).attr('data-krajee-spectrum'));
-                configSpectrum.change = function (color) {
-                    jQuery(id).val(color.toString());
-                };
-                $(sourceID).attr('name', $(sourceID).attr('id'));
-                $(sourceID).spectrum(configSpectrum);
-                $(sourceID).spectrum('set', jQuery(id).val());
-                $(id).on('change', function(){
-                    $(sourceID).spectrum('set', jQuery(id).val());
-                });
+				var matches = id.match(regexID);
+
+				jQuery(matches[1]+matches[2]+"color").on('change',function(){jQuery(id).val(this.value)});
+				jQuery(id).on('input change',function(e){jQuery(matches[1]+matches[2]+"color").val(this.value);if(e.type=='change'){jQuery(matches[1]+matches[2]+"color").trigger('change');}});
+
+				jQuery.when(jQuery(id).spectrum(spectrum)).done(function(){jQuery(id).spectrum('set',jQuery(matches[1]+matches[2]+"color").val());
+				jQuery(matches[1]+matches[2]+"color-cont").removeClass('kv-center-loading');});
+				jQuery(id).spectrum(spectrum);
             });
         }
 
@@ -447,6 +499,7 @@
         if ($hasSelect2.length > 0) {
             $hasSelect2.each(function() {
                 var id = $(this).attr('id');
+                var $id = $('#' + id);
                 var configSelect2 = eval($(this).attr('data-krajee-select2'));
 
                 if ($(this).data('select2')) {
@@ -461,19 +514,22 @@
                     _restoreKrajeeDepdrop($(this));
                 }
 
-                $.when($('#' + id).select2(configSelect2)).done(initSelect2Loading(id, '.select2-container--krajee'));
+                var s2LoadingFunc = typeof initSelect2Loading != 'undefined' ? initSelect2Loading : initS2Loading;
+                var s2OpenFunc = typeof initSelect2DropStyle != 'undefined' ? initSelect2Loading : initS2Loading;
+                
+                $.when($id.select2(configSelect2)).done(s2LoadingFunc(id, '.select2-container--krajee'));
 
                 var kvClose = 'kv_close_' + id.replace(/\-/g, '_');
 
-                $('#' + id).on('select2:opening', function(ev) {
-                    initSelect2DropStyle(id, kvClose, ev);
+                $id.on('select2:opening', function(ev) {
+                    s2OpenFunc(id, kvClose, ev);
                 });
 
-                $('#' + id).on('select2:unselect', function() {
+                $id.on('select2:unselect', function() {
                     window[kvClose] = true;
                 });
 
-               if (configDepdrop) {
+                if (configDepdrop) {
                     var loadingText = (configDepdrop.loadingText) ? configDepdrop.loadingText : 'Loading ...';
                     initDepdropS2(id, loadingText);
                 }
